@@ -34,6 +34,12 @@ static const int snudown_default_render_flags =
     HTML_ESCAPE |
     HTML_USE_XHTML;
 
+static const int snudown_wiki_render_flags = 
+	HTML_SKIP_HTML |
+	HTML_SAFELINK |
+    HTML_ESCAPE |
+    HTML_USE_XHTML;
+
 static void
 snudown_link_attr(struct buf *ob, const struct buf *link, void *opaque)
 {
@@ -49,38 +55,55 @@ snudown_link_attr(struct buf *ob, const struct buf *link, void *opaque)
 	}
 }
 
-static struct sd_markdown* default_render(struct module_state* state) {
+static struct sd_markdown* custom_render(struct module_state* state,
+											const int renderflags,
+											const int markdownflags) {
 	sdhtml_renderer(&state->callbacks,
 		(struct html_renderopt *)&state->options,
-		snudown_default_render_flags);
+		renderflags);
 	
 	state->options.html.link_attributes = &snudown_link_attr;
 	
 	return sd_markdown_new(
-		snudown_default_md_flags,
+		markdownflags,
 		16,
 		&state->callbacks,
 		&state->options
 	);
 }
 
+static struct sd_markdown* default_render(struct module_state* state) {
+	return custom_render(state, snudown_default_render_flags, snudown_default_md_flags);
+}
+
+static struct sd_markdown* wiki_render(struct module_state* state) {
+	return custom_render(state, snudown_wiki_render_flags, snudown_default_md_flags);
+}
+
 static PyObject *
 snudown_md(PyObject *self, PyObject *args, PyObject *kwargs)
 {
-	static char *kwlist[] = {"text", "nofollow", "target", NULL};
+	static char *kwlist[] = {"text", "nofollow", "target", "renderer", NULL};
 
 	struct buf ib, *ob;
 	PyObject *py_result;
 	const char* result_text;
 	struct module_state state;
-	struct sd_markdown* sundown = default_render(&state);
+	const char *renderer;
+	struct sd_markdown* sundown;
 
 	memset(&ib, 0x0, sizeof(struct buf));
 
 	/* Parse arguments */
-	if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s#|iz", kwlist,
-				&ib.data, &ib.size, &state.options.nofollow, &state.options.target)) {
+	if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s#|izz", kwlist,
+				&ib.data, &ib.size, &state.options.nofollow, &state.options.target, &renderer)) {
 		return NULL;
+	}
+	
+	if(renderer && !strcmp("wiki", renderer)) {
+		sundown = wiki_render(&state);
+	} else {
+		sundown = default_render(&state);
 	}
 
 	/* Output buffer */
