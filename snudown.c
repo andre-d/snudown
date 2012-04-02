@@ -5,17 +5,14 @@
 #include "html.h"
 #include "autolink.h"
 
-/* Undefine to switch to dynamic (slower but unlocks GIL) mode */
-#define SNUDOWN_STATIC_RENDERERS 2
+#define SNUDOWN_NUM_STATIC_RENDERERS 2
 
-#ifdef SNUDOWN_STATIC_RENDERERS
-	static struct sd_markdown* sundown[SNUDOWN_STATIC_RENDERERS];
+static struct sd_markdown* sundown[SNUDOWN_NUM_STATIC_RENDERERS];
 
-	enum snudown_renderer {
-		def = 0,
-		wiki
-	};
-#endif
+enum snudown_renderer {
+	def = 0,
+	wiki
+};
 
 struct snudown_renderopt {
 	struct html_renderopt html;
@@ -28,9 +25,7 @@ struct module_state {
 	struct snudown_renderopt options;
 };
 
-#ifdef SNUDOWN_STATIC_RENDERERS
-	static struct module_state _state = {0};
-#endif
+static struct module_state _state = {0};
 
 /* The module doc strings */
 PyDoc_STRVAR(snudown_module__doc__, "When does the narwhal bacon? At Sundown.");
@@ -104,9 +99,6 @@ snudown_md(PyObject *self, PyObject *args, PyObject *kwargs)
 	struct buf ib, *ob;
 	PyObject *py_result;
 	const char* result_text;
-	#ifndef SNUDOWN_STATIC_RENDERERS
-		struct module_state _state = {0};
-	#endif
 	const char *renderer;
 	struct sd_markdown* _sundown;
 
@@ -119,31 +111,16 @@ snudown_md(PyObject *self, PyObject *args, PyObject *kwargs)
 	}
 	
 	if(renderer && !strcmp("wiki", renderer)) {
-		#ifdef SNUDOWN_STATIC_RENDERERS
-			_sundown = sundown[wiki];
-		#else
-			_sundown = wiki_render(&_state);
-		#endif
+		_sundown = sundown[wiki];
 	} else {
-		#ifdef SNUDOWN_STATIC_RENDERERS
-			_sundown = sundown[def];
-		#else
-			_sundown = default_render(&_state);
-		#endif
+		_sundown = sundown[def];
 	}
 
 	/* Output buffer */
 	ob = bufnew(128);
 
 	/* do the magic */
-	#ifndef SNUDOWN_STATIC_RENDERERS
-		Py_BEGIN_ALLOW_THREADS
-	#endif
 	sd_markdown_render(ob, ib.data, ib.size, _sundown);
-	#ifndef SNUDOWN_STATIC_RENDERERS
-		Py_END_ALLOW_THREADS
-		free(_sundown);
-	#endif
 	
 	/* make a Python string */
 	result_text = "";
@@ -169,10 +146,8 @@ PyMODINIT_FUNC initsnudown(void)
 	if (module == NULL)
 		return;
 	
-	#ifdef SNUDOWN_STATIC_RENDERERS
-		sundown[def] = default_render(&_state);
-		sundown[wiki] = wiki_render(&_state);
-	#endif
+	sundown[def] = default_render(&_state);
+	sundown[wiki] = wiki_render(&_state);
 
 	/* Version */
 	PyModule_AddStringConstant(module, "__version__", "1.0.5");
