@@ -10,7 +10,7 @@
 static struct sd_markdown* sundown[SNUDOWN_NUM_STATIC_RENDERERS];
 
 enum snudown_renderer {
-	def = 0,
+	usertext = 0,
 	wiki
 };
 
@@ -99,21 +99,21 @@ snudown_md(PyObject *self, PyObject *args, PyObject *kwargs)
 	struct buf ib, *ob;
 	PyObject *py_result;
 	const char* result_text;
-	const char *renderer;
+	const int renderer;
 	struct sd_markdown* _sundown;
 
 	memset(&ib, 0x0, sizeof(struct buf));
 
 	/* Parse arguments */
-	if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s#|izz", kwlist,
+	if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s#|izi", kwlist,
 				&ib.data, &ib.size, &_state.options.nofollow, &_state.options.target, &renderer)) {
 		return NULL;
 	}
 	
-	if(renderer && !strcmp("wiki", renderer)) {
+	if(renderer == wiki) {
 		_sundown = sundown[wiki];
 	} else {
-		_sundown = sundown[def];
+		_sundown = sundown[usertext];
 	}
 
 	/* Output buffer */
@@ -146,9 +146,12 @@ PyMODINIT_FUNC initsnudown(void)
 	if (module == NULL)
 		return;
 	
-	sundown[def] = default_render(&_state);
+	sundown[usertext] = default_render(&_state);
 	sundown[wiki] = wiki_render(&_state);
-
+	
+	PyModule_AddIntConstant(module, "RENDERER_WIKI", wiki);
+	PyModule_AddIntConstant(module, "RENDERER_USERTEXT", usertext);
+	
 	/* Version */
 	PyModule_AddStringConstant(module, "__version__", "1.0.5");
 }
