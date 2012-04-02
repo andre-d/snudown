@@ -5,6 +5,18 @@
 #include "html.h"
 #include "autolink.h"
 
+/* Undefine to switch to dynamic (slower but unlocks GIL) mode */
+#define SNUDOWN_STATIC_RENDERERS 2
+
+#ifdef SNUDOWN_STATIC_RENDERERS
+	static struct sd_markdown* sundown[SNUDOWN_STATIC_RENDERERS];
+
+	enum snudown_renderer {
+		def = 0,
+		wiki
+	};
+#endif
+
 struct snudown_renderopt {
 	struct html_renderopt html;
 	int nofollow;
@@ -15,6 +27,10 @@ struct module_state {
 	struct sd_callbacks callbacks;
 	struct snudown_renderopt options;
 };
+
+#ifdef SNUDOWN_STATIC_RENDERERS
+	static struct module_state _state = {0};
+#endif
 
 /* The module doc strings */
 PyDoc_STRVAR(snudown_module__doc__, "When does the narwhal bacon? At Sundown.");
@@ -88,33 +104,46 @@ snudown_md(PyObject *self, PyObject *args, PyObject *kwargs)
 	struct buf ib, *ob;
 	PyObject *py_result;
 	const char* result_text;
-	struct module_state state;
+	#ifndef SNUDOWN_STATIC_RENDERERS
+		struct module_state _state = {0};
+	#endif
 	const char *renderer;
-	struct sd_markdown* sundown;
+	struct sd_markdown* _sundown;
 
 	memset(&ib, 0x0, sizeof(struct buf));
 
 	/* Parse arguments */
 	if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s#|izz", kwlist,
-				&ib.data, &ib.size, &state.options.nofollow, &state.options.target, &renderer)) {
+				&ib.data, &ib.size, &_state.options.nofollow, &_state.options.target, &renderer)) {
 		return NULL;
 	}
 	
 	if(renderer && !strcmp("wiki", renderer)) {
-		sundown = wiki_render(&state);
+		#ifdef SNUDOWN_STATIC_RENDERERS
+			_sundown = sundown[wiki];
+		#else
+			_sundown = wiki_render(&_state);
+		#endif
 	} else {
-		sundown = default_render(&state);
+		#ifdef SNUDOWN_STATIC_RENDERERS
+			_sundown = sundown[def];
+		#else
+			_sundown = default_render(&_state);
+		#endif
 	}
 
 	/* Output buffer */
 	ob = bufnew(128);
 
 	/* do the magic */
-	Py_BEGIN_ALLOW_THREADS
-	sd_markdown_render(ob, ib.data, ib.size, sundown);
-	Py_END_ALLOW_THREADS
-	
-	free(sundown);
+	#ifndef SNUDOWN_STATIC_RENDERERS
+		Py_BEGIN_ALLOW_THREADS
+	#endif
+	sd_markdown_render(ob, ib.data, ib.size, _sundown);
+	#ifndef SNUDOWN_STATIC_RENDERERS
+		Py_END_ALLOW_THREADS
+		free(_sundown);
+	#endif
 	
 	/* make a Python string */
 	result_text = "";
@@ -139,6 +168,11 @@ PyMODINIT_FUNC initsnudown(void)
 	module = Py_InitModule3("snudown", snudown_methods, snudown_module__doc__);
 	if (module == NULL)
 		return;
+	
+	#ifdef SNUDOWN_STATIC_RENDERERS
+		sundown[def] = default_render(&_state);
+		sundown[wiki] = wiki_render(&_state);
+	#endif
 
 	/* Version */
 	PyModule_AddStringConstant(module, "__version__", "1.0.5");
